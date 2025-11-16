@@ -1,7 +1,6 @@
 (function() {
   // --- Configuração ---
-  // USANDO NGROK PARA HTTPS SEGURO NA POC (MÁQUINA DO DEV DEVE ESTAR LIGADA!)
-  // Substitua esta URL pela URL de produção HTTPS final.
+  // Endereço da API para a Prova de Conceito (PoC). Deve ser substituído pela URL de produção HTTPS.
   const API_ENDPOINT = "https://c0aef5ff730b.ngrok-free.app"; 
   
   const TRACK_PATH = "/event"; 
@@ -10,7 +9,7 @@
   const CONSENT_COOKIE_NAME = "tracking_consent"; 
   const USER_ID_COOKIE_NAME = "_p_uid"; 
   const ACCOUNT_COOKIE_NAME = "_p_acc"; 
-  const MAX_RETRIES = 3; // Limite de 3 retentativas (4 tentativas no total: 0 + 3)
+  const MAX_RETRIES = 3; // Limite de tentativas de reenvio em caso de falha de rede
 
   let queue = window._ptrack = window._ptrack || [];
   let accountId = "default_account";
@@ -37,14 +36,14 @@
       date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
       expires = "; expires=" + date.toUTCString();
     }
-    document.cookie = name + "=" + (value || "")  + expires + "; path=/; secure; samesite=Lax";
+    document.cookie = name + "=" + (value || "")  + expires + "; path=/; secure; samesite=Lax";
   }
 
   // --- Logging ---
   function log(msg, ...args) {
     console.log("[PageTracker]", msg, ...args);
     
-    // Logging is only attempted if consent is granted, otherwise, only console.log is used.
+    // Tentativa de log para o endpoint da API se o consentimento for dado.
     if (!consentGiven) return; 
 
     try {
@@ -69,7 +68,7 @@
           setCookie(CONSENT_COOKIE_NAME, status ? 'granted' : 'denied', 365);
           log(`Tracking consent set to: ${status}`);
           if (status) {
-              // Se o consentimento foi dado, tenta identificação e processa a fila.
+              // Tenta identificação e processa a fila após o consentimento.
               checkConsentAndLoadIds(); 
               processQueue(); 
           }
@@ -83,7 +82,7 @@
           consentGiven = true;
           log("Consent granted via cookie.");
           
-          // Carrega ID e Email de cookies (automático)
+          // Carrega ID e Email de cookies persistidos.
           const storedUserId = getCookie(USER_ID_COOKIE_NAME);
           const storedAccountId = getCookie(ACCOUNT_COOKIE_NAME);
           
@@ -95,21 +94,20 @@
           }
       } else {
           consentGiven = false;
-          // Não logamos no endpoint se não houver consentimento
+          // Log local se não houver consentimento
           console.log("[PageTracker] Consent not granted via cookie. Tracking is paused.");
       }
   }
 
   // --- Tracking Manual Unificado ---
-  // Adicionado retryCount com valor default 0
   function trackEvent(eventName, eventData, accountInfo = {}, retryCount = 0) {
-    // 1. Atualizar e persistir a conta se novos dados forem fornecidos (Manual)
+    // 1. Atualizar e persistir a conta se novos dados forem fornecidos.
     if (accountInfo.id || accountInfo.email) {
         userId = accountInfo.id || userId;
         email = accountInfo.email || email;
         accountId = accountInfo.email || accountInfo.id || accountId;
 
-        // Persiste as informações atualizadas em cookies (365 dias)
+        // Persiste as informações atualizadas em cookies (365 dias).
         setCookie(USER_ID_COOKIE_NAME, userId, 365);
         setCookie(ACCOUNT_COOKIE_NAME, accountId, 365);
         log("Account/user updated and persisted via trackEvent manual call.", { accountId, userId, email });
@@ -128,14 +126,13 @@
       userId,
       email,
       
-      // >>> CAMPOS DE COOKIES PARA DEBUG E RASTREIO <<<
-      // Inclui os valores das cookies de controle no payload para que o backend os registre
+      // Inclui os valores das cookies de controle no payload para registro no backend.
       cookie_user_id: getCookie(USER_ID_COOKIE_NAME) || null,
       cookie_consent_status: getCookie(CONSENT_COOKIE_NAME) || 'denied',
       
       timestamp: new Date().toISOString(),
       url: window.location.href,
-      retryCount: retryCount, // Inclui o contador de tentativas
+      retryCount: retryCount, // Contador de tentativas para controle de loop
       ...eventData
     };
 
